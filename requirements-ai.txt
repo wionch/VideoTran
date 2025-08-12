@@ -1,0 +1,14 @@
+# Core dependencies for transcription and diarization
+whisperx
+
+# The following are often installed as dependencies of whisperx, 
+# but we list them explicitly to be sure.
+# Use 'pip install faster-whisper' if you encounter issues.
+faster-whisper
+torch
+
+# For speaker diarization
+pyannote.audio
+
+# Optional: For Traditional to Simplified Chinese conversion, if needed.
+opencc-python-reimplemented
