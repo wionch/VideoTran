@@ -28,6 +28,6 @@ def separate_vocals(video_path):
 
 if __name__ == "__main__":
     # 独立测试代码示例
-    video_file = r"D:\Python\Project\VideoTran\videos\333.mkv"
+    video_file = r"D:\Python\Project\VideoTran\videos\1.mp3"
     
     separate_vocals(video_file)

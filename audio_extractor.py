@@ -24,7 +24,7 @@ def extract_audio(video_path, audio_path):
 
 if __name__ == "__main__":
     # 独立测试代码示例
-    video_file = r"D:\Python\Project\VideoTran\videos\333.mkv"
-    output_audio = r"D:\Python\Project\VideoTran\videos\extracted_audio.mp3"
+    video_file = r"D:\Python\Project\VideoTran\videos\1.mkv"
+    output_audio = r"D:\Python\Project\VideoTran\videos\1.mp3"
     
     extract_audio(video_file, output_audio)

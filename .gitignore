@@ -1,0 +1,33 @@
+# Python 默认忽略
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.python-version
+
+# 指定忽略目录
+audiocraft/
+index-tts/
+python-audio-separator/
+videos/
+output/
+whisper-standalone-win/
+whisperX/
+*.dll

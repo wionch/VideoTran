@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # # 提示：说话人分离功能需要 Hugging Face Token
     # # HUGGING_FACE_TOKEN = "hf_YOUR_TOKEN_HERE"
     # ###################################################################
-    HUGGING_FACE_TOKEN = "" # 当前任务不需要，设为None
+    HUGGING_FACE_TOKEN = "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" # 当前任务不需要，设为None
 
     test_audio_file = r"D:\Python\Project\VideoTran\videos\Volcal.wav"
     print("--- 开始独立测试 wpx.py [V7 - 带对齐功能] ---")
