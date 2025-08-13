@@ -22,6 +22,7 @@ def recognize_speakers_and_generate_text(audio_path, hf_token):
     use_cuda = (use_cuda_env == '1') and torch.cuda.is_available()
     device = 'cuda' if use_cuda else 'cpu'
     compute_type = 'float16' if use_cuda else 'int8'
+    language = 'zh'
 
     if not os.path.exists(audio_path):
         print(f"错误: 音频文件不存在于路径: {audio_path}")
@@ -39,7 +40,7 @@ def recognize_speakers_and_generate_text(audio_path, hf_token):
 
         print("步骤 1/4: 使用 faster-whisper 加载模型并执行转录...")
         fw_model = WhisperModel("large-v2", device=device, compute_type=compute_type)
-        segments, info = fw_model.transcribe(audio_path, language="zh", vad_filter=True)
+        segments, info = fw_model.transcribe(audio_path, language=language, vad_filter=True)
         
         # 将生成器转为列表以复用
         segments_list = list(segments) 
@@ -114,7 +115,7 @@ if __name__ == '__main__':
     # ###################################################################
     HUGGING_FACE_TOKEN = "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" # 当前任务不需要，设为None
 
-    test_audio_file = r"D:\Python\Project\VideoTran\videos\Volcal.wav"
+    test_audio_file = r"D:\Python\Project\VideoTran\videos\Vocals.wav"
     print("--- 开始独立测试 wpx.py [V7 - 带对齐功能] ---")
     recognize_speakers_and_generate_text(test_audio_file, hf_token=HUGGING_FACE_TOKEN)
     print("--- 独立测试完成 ---")

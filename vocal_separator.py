@@ -21,9 +21,29 @@ def separate_vocals(video_path):
         separator.load_model(model_filename=model_name)
         print(f"正在分离人声和背景音: {video_path}")
         output_files = separator.separate(video_path)
+        # 重命名输出文件，使人声和伴奏文件命名更简洁
+        renamed_files = []
+        for file_path in output_files:
+            file_path = os.path.join(output_dir, file_path)
+            dir_name = os.path.dirname(file_path)
+            base_name = os.path.basename(file_path)
+            
+            if 'Vocals' in base_name:
+                new_name = os.path.join(dir_name, 'Vocals.wav')
+            elif 'Instrumental' in base_name:
+                new_name = os.path.join(dir_name, 'Instrumental.wav')
+            else:
+                new_name = file_path
+                
+            os.rename(file_path, new_name)
+            renamed_files.append(new_name)
+        
+        output_files = renamed_files
         print(f"分离完成！输出文件: {', '.join(output_files)}")
+        return output_files
     except Exception as e:
         print(f"处理过程中发生错误: {e}")
+        return []
 
 
 if __name__ == "__main__":

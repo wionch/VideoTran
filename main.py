@@ -1,64 +1,69 @@
+"""
+主程序入口
+"""
 import os
-import sys
-os.environ['TRANSFORMERS_SKIP_TORCH_LOAD_SAFETY_CHECK'] = '1'
-
-# 解决Conda环境下DLL加载失败的问题
-# 获取当前Python解释器的路径，并构建Conda环境的关键路径
-if sys.platform == 'win32':
-    conda_env_path = sys.executable
-    conda_env_root = os.path.dirname(os.path.dirname(conda_env_path))
-    # 将关键的DLL路径添加到PATH环境变量中
-    dll_paths = [
-        os.path.join(conda_env_root, 'Library', 'bin'),
-        os.path.join(conda_env_root, 'bin'),
-        os.path.join(conda_env_root, 'Scripts')
-    ]
-    for path in dll_paths:
-        if os.path.isdir(path):
-            os.environ['PATH'] = path + os.pathsep + os.environ['PATH']
-
-# 导入拆分后的模块
-import torch  # 用于检测 GPU 可用性
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-
-# from audio_extractor import extract_audio
-# from vocal_separator import separate_vocals
+from audio_extractor import extract_audio
+from vocal_separator import separate_vocals
 from wpx import recognize_speakers_and_generate_text
 
+def process_video(video_path, hf_token=None):
+    """
+    处理指定视频文件的完整流程。
+
+    1. 提取音频
+    2. 分离人声与背景音
+    3. 对人声进行语音识别和说话人分析
+
+    :param video_path: 视频文件的完整路径。
+    :param hf_token: Hugging Face Hub 的认证令牌，用于说话人分离。
+    """
+    if not os.path.exists(video_path):
+        print(f"错误: 视频文件不存在于路径: {video_path}")
+        return
+
+    # --- 1. 定义路径 ---
+    video_dir = os.path.dirname(video_path)
+    video_basename = os.path.splitext(os.path.basename(video_path))[0]
+    
+    # 音频提取路径
+    extracted_audio_path = os.path.join(video_dir, f"{video_basename}_extracted.mp3")
+    
+    
+    print(f"--- 开始处理视频: {video_path} ---")
+
+    # --- 2. 提取音频 ---
+    print("\n--- 步骤 1/3: 提取音频 ---")
+    extract_audio(video_path, extracted_audio_path)
+
+    # --- 3. 分离人声和背景音 ---
+    print("\n--- 步骤 2/3: 分离人声和背景音 ---")
+    # separate_vocals 返回一个包含所有输出文件路径的列表
+    separate_vocals(extracted_audio_path)
+
+    # 查找包含 "Vocals" 的文件路径
+    vocal_track_path = r'./videos/Vocals.wav'
+
+    if not os.path.exists(vocal_track_path):
+        print("错误: 未能从分离结果中找到人声文件。")
+        return
+        
+    print(f"找到人声文件: {vocal_track_path}")
+
+    # --- 4. 提取说话人文本 ---
+    print("\n--- 步骤 3/3: 识别说话人并生成文本 ---")
+    recognize_speakers_and_generate_text(vocal_track_path, hf_token=hf_token)
+
+    print(f"--- 视频处理完成: {video_path} ---")
+
+
 if __name__ == "__main__":
-    # ----------------------------------------------------------------
-    # 请在下方引号内替换为您的 Hugging Face Access Token
-    # 获取步骤:
-    # 1. 访问 https://huggingface.co/pyannote/speaker-diarization-3.1 并同意协议
-    # 2. 对 https://huggingface.co/pyannote/segmentation-3.0 也进行同样的操作
-    # 3. 访问 https://huggingface.co/settings/tokens 创建一个 read token 并复制到此处
-    # ----------------------------------------------------------------
-    HUGGING_FACE_TOKEN = ""
+    # ###################################################################
+    # # 提示：说话人分离功能需要 Hugging Face Token
+    # # HUGGING_FACE_TOKEN = "hf_YOUR_TOKEN_HERE"
+    # ###################################################################
+    HUGGING_FACE_TOKEN = "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"
 
-    # 定义文件路径
-    video_file = r"D:\Python\Project\VideoTran\videos\333.mkv"
-    audio_file = r"D:\Python\Project\VideoTran\videos\audio.wav"
-    vocal_audio_file = r"D:\Python\Project\VideoTran\videos\Volcal.wav"
-
-    # --- 工作流程 ---
-    # 添加文件存在性检查
-    if not os.path.exists(vocal_audio_file):
-        print(f"错误: 人声音频文件不存在: {vocal_audio_file}")
-        print("请确保已经完成音频提取和人声分离步骤")
-        sys.exit(1)
-
-    # 步骤 0: 提取音频
-    # print("--- 步骤 0: 提取音频 ---")
-    # extract_audio(video_file, audio_file)
-    # print("--- 步骤 0 完成 ---")
-
-    # 步骤 1: 分离人声 (如果需要，取消下面的注释)
-    # print("--- 步骤 1: 分离人声 ---")
-    # separate_vocals(video_file)
-    # print("--- 步骤 1 完成 ---")
-
-    # # 步骤 2: 识别说话人并生成文本
-    print("--- 步骤 2: 识别说话人并生成文本 ---")
-    recognize_speakers_and_generate_text(vocal_audio_file, hf_token=HUGGING_FACE_TOKEN)
-    print("--- 步骤 2 完成 ---")
+    # 指定要处理的视频文件
+    video_to_process = r"D:\Python\Project\VideoTran\videos\5.mp4"
+    
+    process_video(video_to_process, hf_token=HUGGING_FACE_TOKEN)
