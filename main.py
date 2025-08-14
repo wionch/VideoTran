@@ -79,11 +79,10 @@ if __name__ == "__main__":
     # ###################################################################
     huggingface_token = os.environ.get("HUGGING_FACE_TOKEN")
     print('huggingface_token:', huggingface_token)
-    # "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"
     HUGGING_FACE_TOKEN = huggingface_token 
 
     # 指定要处理的视频文件
-    video_to_process = r"D:\Python\Project\VideoTran\videos\6.mp4"
+    video_to_process = r"D:\Python\Project\VideoTran\videos\7.mp4"
     
     process_video(video_to_process, hf_token=HUGGING_FACE_TOKEN)
 

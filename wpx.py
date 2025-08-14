@@ -13,6 +13,12 @@ from faster_whisper import WhisperModel
 import whisperx.diarize
 from whisperx.utils import get_writer
 
+import sys
+print("---" + "[DEBUG]" + "---")
+print(f"Python Executable: {sys.executable}")
+print(f"PyTorch Version: {torch.__version__}")
+print("---" + "[DEBUG]" + "---")
+
 def recognize_speakers_and_generate_text(audio_path, hf_token):
     """
     使用混合式方案执行转录和后续处理。
@@ -34,7 +40,7 @@ def recognize_speakers_and_generate_text(audio_path, hf_token):
 
     try:
         # --- 2. 转录与保存 ---
-        print(f"--- 使用设备: {device}, 计算类型: {compute_type} ---")
+        print(f"---" + "使用设备: {device}, 计算类型: {compute_type}" + "---")
         if use_cuda:
             print(f"检测到 GPU: {torch.cuda.get_device_name(0)}")
 
@@ -89,7 +95,7 @@ def recognize_speakers_and_generate_text(audio_path, hf_token):
         print("\n步骤 4/5: 使用 whisperx 进行说话人分离...")
         if hf_token:
             diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=hf_token, device=device)
-            diarize_segments = diarize_model(audio_path)
+            diarize_segments = diarize_model(audio_path, num_speakers=2)
             result_final = whisperx.assign_word_speakers(diarize_segments, result_aligned)
             result_final["language"] = info.language # Add language for writer
 
@@ -113,9 +119,11 @@ if __name__ == '__main__':
     # # 提示：说话人分离功能需要 Hugging Face Token
     # # HUGGING_FACE_TOKEN = "hf_YOUR_TOKEN_HERE"
     # ###################################################################
-    HUGGING_FACE_TOKEN = "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" # 当前任务不需要，设为None
+    huggingface_token = os.environ.get("HUGGING_FACE_TOKEN")
+
+    HUGGING_FACE_TOKEN = huggingface_token 
 
     test_audio_file = r"D:\Python\Project\VideoTran\videos\Vocals.wav"
-    print("--- 开始独立测试 wpx.py [V7 - 带对齐功能] ---")
+    print("---" + "开始独立测试 wpx.py [V7 - 带对齐功能]" + "---")
     recognize_speakers_and_generate_text(test_audio_file, hf_token=HUGGING_FACE_TOKEN)
-    print("--- 独立测试完成 ---")
+    print("---" + "独立测试完成" + "---")

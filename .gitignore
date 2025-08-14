@@ -30,4 +30,5 @@ videos/
 output/
 whisper-standalone-win/
 whisperX/
+env_whisper/
 *.dll
