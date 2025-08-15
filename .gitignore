@@ -31,4 +31,15 @@ output/
 whisper-standalone-win/
 whisperX/
 env_whisper/
+OpenVoice/
+workspace/
+processed/
+.vscode/
+video_tran/
 *.dll
+
+# Added by Gemini
+*.env
+temp/
+venv/
+.*env

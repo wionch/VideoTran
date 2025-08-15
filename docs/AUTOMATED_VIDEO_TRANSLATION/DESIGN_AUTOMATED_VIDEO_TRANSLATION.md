@@ -1,155 +1,90 @@
-# 设计文档：自动化视频翻译 (AUTOMATED_VIDEO_TRANSLATION)
+# 系统设计文档 (Design v5 - 实施同步版): AUTOMATED_VIDEO_TRANSLATION
 
-## 1. 总体架构
+**版本说明: v5版本根据最终代码实现进行了重写，准确反映了项目的当前架构。**
 
-本系统是一个基于管道（Pipeline）模式的命令行工具。总控脚本 `main.py` 将依次调用各个独立的模块，每个模块负责一项核心任务，并将处理结果以文件形式传递给下一个模块。这种松耦合的设计便于独立开发、测试和替换任何一个环节。
+## 1. 总体架构图
 
-### 1.1. 总体架构图 (Mermaid)
-
-```mermaid
-graph TD
-    A[输入: video.mp4] --> B{1. 音频分离};
-    B --> C[人声.wav];
-    B --> D[背景声.wav];
-    C --> E{2. 语音识别 (whisperX)};
-    E --> F[原文.srt];
-    F --> G{3. 字幕校对 (OCR+LLM)};
-    A --> G;
-    G --> H[校对后.srt];
-    H --> I{4. 文本翻译 (DeepSeek)};
-    I --> J[译文.txt];
-    H --> K{5. 原字幕处理 (OpenCV)};
-    A --> K;
-    K --> L[无字幕视频或遮罩数据];
-    C & H --> M{6. 语音克隆 (OpenVoice)};
-    M --> N[英文对白.wav];
-    D & J & L & N --> O{7. 最终合成 (ffmpeg)};
-    O --> P[输出: translated_video.mp4];
-```
-
-### 1.2. 模块依赖关系图 (Mermaid)
+系统采用基于**直接类调用**的紧耦合流水线架构。中心“编排器” (Orchestrator) 负责在**单一Python环境**中实例化并执行各个模块，模块间通过内存对象和文件系统进行数据交换。
 
 ```mermaid
 graph TD
-    subgraph Python脚本
-        main(main.py);
-        mod1(audio_separator_module.py);
-        mod2(transcriber_module.py);
-        mod3(corrector_module.py); 
-        mod4(hardsub_masker_module.py);
-        mod5(translator_module.py);
-        mod6(tts_module.py);
-        mod7(composer_module.py);
+    subgraph Input
+        A[video_file.mp4]
     end
 
-    subgraph 外部工具
-        ffmpeg(ffmpeg);
-        whisperX(whisperX CLI);
-        OCR(easyocr Lib);
-        LLM(DeepSeek API);
-        OpenVoice(OpenVoice Lib);
+    subgraph "Pipeline Core (Single Python Environment)"
+        D(Orchestrator)
+        D -- instantiates & calls --> E(AudioProcessor)
+        D -- instantiates & calls --> F(Transcriber)
+        D -- instantiates & calls --> G(Corrector)
+        D -- instantiates & calls --> H(Translator)
+        D -- instantiates & calls --> I(TTSGenerator)
+        D -- instantiates & calls --> J(VideoProducer)
+        
+        G -- uses --> K[LLM API Client]
+        H -- uses --> K
     end
 
-    main --> mod1 --> ffmpeg;
-    main --> mod2 --> whisperX;
-    main --> mod3 --> OCR & LLM;
-    main --> mod4 --> ffmpeg;
-    main --> mod5 --> LLM;
-    main --> mod6 --> OpenVoice;
-    main --> mod7 --> ffmpeg;
+    subgraph Output
+        L[final_video.mp4]
+        M[final_subs.srt]
+    end
+
+    A --> D
+    J --> L
+    J --> M
 ```
 
-## 2. 核心模块接口定义
+## 2. 模块化设计与执行方式
 
-为了管理流程中产生的中间文件，我们将创建一个以输入视频名命名的临时工作目录，如 `./workspace/my_video/`。
+- **`orchestrator.py`**: 流程编排器。核心职责为：直接导入并实例化每个模块的Python类（如`Transcriber`, `TTSGenerator`），调用其`run`方法，管理和传递参数，并监控执行结果。整个流程运行在**同一个Python进程**中。
+- **模块类**: 每个模块（如`transcriber/`）的核心逻辑被封装在一个Python类中（如`Transcriber`类）。虽然部分模块保留了`run.py`用于独立测试，但主流程不通过CLI调用它们。
+- **依赖管理**: 所有模块的依赖项（如`whisperX`, `OpenVoice`等）都安装在**同一个Python环境**中。这简化了部署，但也要求所有依赖项彼此兼容。
+- **密钥管理**: 所有需要API密钥的模块（如`Translator`）将直接从**环境变量**中读取密钥，而不是从配置文件或代码中读取。
+- **`config.py`**: 负责加载和管理项目**非敏感**配置。将提供一个`config.yaml.template`模板文件，其中会注明需要用户设置哪些环境变量。
 
-### 2.1. `audio_separator_module.py`
-- **函数签名**: `separate_audio(video_path: str, workspace: str) -> (str, str)`
-- **输出**: `(vocals_path, background_path)`
+## 3. 核心接口定义 (Module Interfaces)
 
-### 2.2. `transcriber_module.py`
-- **函数签名**: `transcribe(vocals_path: str, workspace: str) -> (str, str)`
-- **输出**: `(transcription_srt_path, diarization_info_path)`
+`Orchestrator`通过直接调用模块类的方法来驱动流水线。以下是关键的内部接口（简化表示）：
 
-### 2.3. `corrector_module.py` (新增)
-- **函数签名**: `correct_subtitle(video_path: str, srt_path: str, workspace: str, config: dict) -> str`
-- **输入**:
-    - `video_path`: 原始视频文件路径 (用于OCR)。
-    - `srt_path`: `whisperX` 生成的原始srt文件。
-    - `workspace`: 临时工作目录。
-    - `config`: 包含校对模式 (`ocr_only`, `llm_only`, `hybrid`) 和API Key的字典。
-- **操作**: 根据配置的模式，执行相应的校对逻辑。
-- **输出**: `corrected_srt_path`，指向 `workspace/corrected.srt`。
+- **Audio Processor**
+  `AudioProcessor().run(video_path: str) -> (vocals_path: str, background_path: str)`
+- **Transcriber**
+  `Transcriber().run(audio_path: str, lang: str) -> List[Segment]`
+- **Corrector**
+  `Corrector().run(segments: List[Segment]) -> List[Segment]`
+- **Translator**
+  `Translator().run(segments: List[Segment], target_lang: str) -> List[Segment]`
+- **TTS Generator**
+  `TTSGenerator().run(segments: List[Segment], ref_audio: str, target_lang: str) -> dubbed_vocals_path: str`
+- **Video Producer**
+  `VideoProducer().run(original_video: str, dubbed_audio: str, bg_audio: str, segments: List[Segment]) -> (output_video: str, output_srt: str)`
 
-### 2.4. `hardsub_masker_module.py` (更新)
-- **函数签名**: `mask_hardsubs(video_path: str, corrected_srt_path: str, workspace: str, strategy: str) -> str`
-- **输入**:
-    - `corrected_srt_path`: 校对后的srt文件，用于获取时间戳。
-    - `strategy`: 遮罩策略 (`direct_overlay` 或 `clean_pass`)。
-- **操作**: 
-    - 根据`strategy`，或者生成一个完整的无字幕视频 (`clean_pass`)，或者仅在需要时处理帧并传递给合成器。
-    - **优化**: 只处理 `corrected_srt_path` 中有字幕的时间区间的帧。
-- **输出**: `processed_video_path` (如果使用`clean_pass`策略)。
+## 4. 关键设计策略
 
-### 2.5. `translator_module.py` (更新)
-- **函数签名**: `translate(corrected_srt_path: str, workspace: str, api_key: str) -> str`
-- **输入**: `corrected_srt_path` (使用校对后的srt)。
-- **输出**: `translated_text_path`。
+### 4.1. 核心原则: “孤岛”策略
+- **决策**: 我们**不采用**说话人识别技术。每个语音片段被视为独立的“孤岛”。
+- **理由**: 此举可**100%避免**“声画错位”（即A说话，B发声）这一最严重的逻辑错误。我们接受“局部音色可能因参考音质量不佳而略有瑕疵”的风险，以此换取“角色身份绝对正确”的健壮性。
 
-### 2.6. `tts_module.py` (更新)
-- **函数签名**: `synthesize(vocals_path: str, translated_text_path: str, diarization_info_path: str, workspace: str) -> str`
-- **输入**: `diarization_info_path` (从`transcriber`模块获取)。
-- **输出**: `translated_vocals_path`。
+### 4.2. 核心策略: VAD混合时长校准
+- **目标**: 在保证声音自然度的前提下，使翻译后音轨的时长与原视频口型时间轴精确对齐。
+- **工作流程**:
+    1.  **LLM智能译写**: 在翻译文本时（T3），向LLM提供原始时长作为上下文，引导其生成长度适中的译文。
+    2.  **自然语速生成**: TTS模块（T4）首先以最自然的语速生成音频，不进行任何强制变速。
+    3.  **VAD静音规整**:
+        - 使用VAD（Voice Activity Detection）技术分析生成好的音频，识别出其中的“说话”部分和“静音”部分。
+        - **如果“说话”部分总时长小于等于目标时长**：则通过压缩/扩展“静音”部分，将音频总长精确调整到目标时长。此过程不改变任何说话声音的语速，效果最自然。
+        - **如果“说话”部分总时长已超过目标时长**：则启用备用方案。
+    4.  **备用方案: 强制语速调整**:
+        - 在上述VAD方案无法解决的极端情况下，TTS模块将对**这一个**音频片段重新进行一次生成，但这次会强制设定其输出时长，通过微调语速来确保对齐。
 
-### 2.7. `composer_module.py` (更新)
-- **函数签名**: `compose_video(config: dict)`
-- **输入**: 一个包含所有文件路径和策略配置的字典。
-- **操作**: 
-    - 根据`hardsub_mask_strategy`选择不同的`ffmpeg`命令。
-    - **策略A (clean_pass)**: `ffmpeg -i no_sub.mp4 -i final_audio.wav -filter_complex "[0:v]subtitles=final.srt[v]" ...`
-    - **策略B (direct_overlay)**: `ffmpeg -i video.mp4 -i final_audio.wav -vf "subtitles=final.srt, ..." ...` (此处的filter会更复杂，需要动态生成)。
-- **输出**: 无。
+### 4.3. 依赖管理
+- **问题**: `whisperX`和`OpenVoice`等重量级深度学习库存在潜在的依赖冲突。
+- **解决方案**: 项目采用**单一环境**策略。所有依赖项被安装在同一个Python（Conda或Venv）环境中。这要求在`requirements.txt`或环境创建命令中仔细管理包版本，以确保所有库都能共存。虽然牺牲了环境隔离的灵活性，但大大简化了项目的执行和部署流程。
 
-## 3. 关键数据流图 (Mermaid)
+## 5. 错误处理与密钥管理
 
-```mermaid
-graph TD
-    subgraph Filesystem
-        F1(video.mp4)
-        F2(./workspace/)
-        F3(vocals.wav)
-        F4(background.wav)
-        F5(original.srt)
-        F6(corrected.srt) 
-        F7(no_sub_video.mp4)
-        F8(translated.txt)
-        F9(translated_vocals.wav)
-        F10(final_audio.wav)
-        F11(output.mp4)
-    end
-
-    subgraph Modules
-        M1(Audio Separator) -->|writes| F3 & F4
-        M2(Transcriber) -->|writes| F5
-        M3(Corrector) -->|writes| F6
-        M4(Hardsub Masker) -->|writes| F7
-        M5(Translator) -->|writes| F8
-        M6(TTS) -->|writes| F9
-        M7(Composer) -->|writes| F10 & F11
-    end
-
-    F1 --> M1
-    F3 --> M2
-    F1 & F5 --> M3
-    F1 & F6 --> M4
-    F6 --> M5
-    F3 & F8 --> M6
-    F2 --> M7
-```
-
-## 4. 错误处理策略
-
-- **日志记录**: 所有模块都使用 Python 的 `logging` 模块，将日志输出到控制台，并可配置写入到 `workspace/log.txt`。
-- **异常捕获**: `main.py` 的主流程控制将包含 `try...except` 块，捕获每个模块执行期间的异常。
-- **失败即停止**: 任何一个模块执行失败，整个流程将立即停止，并报告错误信息，保留临时文件以便调试。
-- **依赖检查**: 在主流程开始时，检查 `ffmpeg` 是否在系统 `PATH` 中。
+- **异常捕获**: `Orchestrator`将使用`try...except`块来捕获每个模块执行期间的Python异常。
+- **日志记录**: 使用Python的`logging`模块记录详细的执行信息、警告和错误，便于追踪问题。
+- **健壮性**: `finally`块和临时文件清理策略保持不变。
+- **密钥管理**: **所有API密钥（如`DEEPSEEK_TOKEN`, `HUGGING_FACE_TOKEN`）严禁硬编码。** 程序将从**环境变量**中读取这些密钥。项目将提供文档说明需要设置哪些变量。

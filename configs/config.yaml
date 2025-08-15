@@ -1,0 +1,74 @@
+# VideoTran Configuration Template
+#
+# How to use:
+# 1. Rename this file to 'config.yaml'.
+# 2. Fill in the required paths and parameters below.
+# 3. Ensure the required environment variables are set.
+
+# -----------------------------------------------------------------------------
+# Environment Variables Required
+# -----------------------------------------------------------------------------
+# Before running the application, you must set the following environment
+# variables. They contain sensitive API keys and should not be hardcoded.
+#
+# DEEPSEEK_TOKEN: Your API key for the DeepSeek translation service.
+# HUGGING_FACE_TOKEN: (Optional) Your token for Hugging Face, which might be
+#                     needed for downloading certain models.
+#
+# Example (Windows Command Prompt):
+# set DEEPSEEK_TOKEN="your_actual_token_here"
+#
+# Example (PowerShell):
+# $env:DEEPSEEK_TOKEN="your_actual_token_here"
+#
+# Example (Linux/macOS):
+# export DEEPSEEK_TOKEN="your_actual_token_here"
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Project Paths
+# -----------------------------------------------------------------------------
+# Paths for models and temporary files.
+# It is recommended to use absolute paths.
+paths:
+  # Path to the directory where final videos and subtitles will be stored.
+  output: "output"
+
+# -----------------------------------------------------------------------------
+# Environment and Model Configuration
+# -----------------------------------------------------------------------------
+
+environments:
+  # Command to activate the environment for the 'transcriber' module (whisperX).
+  transcriber: "conda activate whisper_env"
+  # Command to activate the environment for the 'tts_generator' module (OpenVoice).
+  tts_generator: "conda activate openvoice_env"
+  # Command to activate the main environment for orchestration and other tasks.
+  main: "conda activate main_env"
+
+# --- Transcriber (whisperX) Settings ---
+transcriber:
+  # Model size. Options: "tiny", "base", "small", "medium", "large-v2", "large-v3"
+  # Smaller models are faster but less accurate.
+  model: "large-v2"
+  # Batch size for transcription. Higher values may increase speed on powerful GPUs.
+  batch_size: 16
+  # Compute type for the model. Options: "float16", "int8", "float32"
+  # "int8" can provide a significant speed-up on compatible GPUs.
+  compute_type: "float32"
+
+# --- Audio Separator Settings ---
+audio_separator:
+  # UVR (Ultimate Vocal Remover) model for audio separation.
+  # See audio-separator documentation for available models.
+  model_name: "UVR-MDX-NET-Inst_HQ_3"
+
+
+# -----------------------------------------------------------------------------
+# Processing Parameters
+# -----------------------------------------------------------------------------
+processing:
+  # The number of speakers to identify in the audio.
+  # This is currently a placeholder, as the "island" strategy is used,
+  # which processes each segment independently without speaker identification.
+  num_speakers: 1
