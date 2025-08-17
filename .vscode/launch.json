@@ -31,6 +31,42 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Debug Translator",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_tran/translator/run.py",
+            "args": [
+                "--input-json",
+                "D:\\Python\\Project\\VideoTran\\videos\\223_new.json",
+                "--target-lang",
+                "zh",
+                "--output-json",
+                "D:\\Python\\Project\\VideoTran\\videos\\223_tran.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Debug TTS Generator with 223_tran.json",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_tran/tts_generator/run.py",
+            "args": [
+                "--input-json",
+                "D:\\Python\\Project\\VideoTran\\videos\\223_tran.json",
+                "--ref-audio",
+                "D:\\Python\\Project\\VideoTran\\videos\\223_vocal.wav",
+                "--output-audio",
+                "D:\\Python\\Project\\VideoTran\\videos\\223_vocal_tran.wav",
+                "--temp-dir",
+                "D:\\Python\\Project\\VideoTran\\workspace\\233",
+                "--target-lang",
+                "zh"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }

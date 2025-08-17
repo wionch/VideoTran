@@ -18,6 +18,10 @@ def main():
     parser.add_argument("-sl", "--source-language", required=True, help="视频的源语言代码 (例如, 'zh' 表示中文)。")
     parser.add_argument("-tl", "--target-language", required=True, help="要翻译成的目标语言 (例如, 'en' 表示英文)。")
     parser.add_argument("-c", "--config", default="configs/config.yaml", help="配置文件的路径。")
+    # 新增 mode 参数
+    parser.add_argument("-m", "--mode", choices=['dub', 'dub_v2', 'transcribe', 'translate'], default='dub', help="处理模式: 'dub' (标准配音), 'dub_v2' (增强型配音), 'transcribe' (仅转录), 'translate' (仅翻译)。")
+    # 新增 no_cleanup 参数
+    parser.add_argument("--no-cleanup", action="store_true", help="执行后不清理临时工作目录。")
 
     args = parser.parse_args()
 
@@ -26,7 +30,9 @@ def main():
         orchestrator.run(
             video_path=args.input_video,
             src_lang=args.source_language,
-            target_lang=args.target_language
+            target_lang=args.target_language,
+            mode=args.mode,
+            no_cleanup=args.no_cleanup
         )
     except ValueError as e:
         print(f"错误: {e}")
