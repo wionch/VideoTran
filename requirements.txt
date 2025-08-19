@@ -1,3 +1,15 @@
+# Existing dependencies
 moviepy
 imageio-ffmpeg
 audio-separator[gpu]
+thefuzz
+# paddlepaddle # 建议使用GPU版本，如下
+ffmpeg-python
+
+# --- Dependencies for V3 Remover ---
+paddlepaddle-gpu # V3方案基于GPU，请确保安装此版本而非CPU版
+paddleocr
+torch # 核心依赖，请根据Conda环境中CUDA版本确认torch版本
+torchvision # 必须与torch版本兼容
+opencv-python
+pyyaml # 用于解析config.yaml

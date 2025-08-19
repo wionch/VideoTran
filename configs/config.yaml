@@ -21,3 +21,24 @@ whisperx:
 ffmpeg:
   # FFmpeg可执行文件的路径 (如果不在系统PATH中)
   path: 'ffmpeg'
+
+remover_v3:
+  # 变化检测的相似度阈值，值越小表示要求图片越相似
+  change_detection_threshold: 1.0e-5
+  # 进行变化检测和OCR时，一次性加载到GPU的帧数
+  batch_size: 512
+  ocr_batch_size: 128 # 控制OCR批处理大小，可根据GPU显存和实际效果调整，越大越能充分利用GPU。
+  # 设定一个最小的字幕持续时间（秒），过滤掉噪音
+  min_subtitle_duration_sec: 0.2
+  # PaddleOCR 模型相关配置 (如果需要)
+  paddle_ocr:
+    lang: 'en' # 根据需要调整
+    use_angle_cls: False # 是否使用角度分类器
+
+similarity:
+  algorithm: ssim  # 算法选择, 可选: ssim, mse
+  threshold: 0.4   # 变化检测的阈值。SSIM建议用0.1左右, MSE建议用1e-5左右
+
+y_axis_detection:
+  sample_count: 20
+  similarity_threshold: 0.2
