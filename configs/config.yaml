@@ -30,6 +30,8 @@ remover_v3:
   ocr_batch_size: 128 # 控制OCR批处理大小，可根据GPU显存和实际效果调整，越大越能充分利用GPU。
   # 设定一个最小的字幕持续时间（秒），过滤掉噪音
   min_subtitle_duration_sec: 0.2
+  # 用于检测空白帧的标准差阈值。低于此值的帧被视为空白。
+  blank_detection_threshold: 0.22
   # PaddleOCR 模型相关配置 (如果需要)
   paddle_ocr:
     lang: 'en' # 根据需要调整

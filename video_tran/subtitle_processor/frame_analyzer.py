@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import torchvision.transforms as T
 from typing import List, Dict, Any, Generator, Tuple
+import os
 
 from ..utils.data_structures import PreciseSubtitle
 
@@ -62,7 +63,6 @@ class FrameAnalyzer:
         from difflib import SequenceMatcher
         import numpy as np
 
-        print("--- 开始智能检测Y轴字幕区域 ---")
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise IOError(f"无法打开视频文件: {video_path}")
@@ -82,7 +82,6 @@ class FrameAnalyzer:
             if len(parts) == 2: return float(parts[0]) * 60 + float(parts[1])
             return float(parts[0])
 
-        print(f"选取了 {len(samples)} 条最长字幕作为样本进行分析...")
         for i, sub in enumerate(samples):
             start_sec = time_str_to_seconds(sub['startTime'])
             end_sec = time_str_to_seconds(sub['endTime'])
@@ -92,17 +91,14 @@ class FrameAnalyzer:
             ret, frame = cap.read()
             
             if not ret:
-                print(f"  - 样本 {i+1}: 无法读取帧 at index {mid_frame_idx}")
                 continue
 
             result = self.ocr_engine.ocr(frame, cls=False)
             if not (result and result[0]):
-                print(f"  - 样本 {i+1}: 在帧 {mid_frame_idx} 未找到任何文本。")
                 continue
             
             target_text = sub.get('text', '').strip()
             if not target_text:
-                print(f"  - 样本 {i+1}: 原始字幕文本为空，跳过。")
                 continue
 
             best_match_ratio = 0.0
@@ -120,17 +116,11 @@ class FrameAnalyzer:
                 min_y = min(p[1] for p in best_match_box)
                 max_y = max(p[1] for p in best_match_box)
                 all_found_coords.append((min_y, max_y))
-                print(f"  - 样本 {i+1}: 匹配成功 (相似度: {best_match_ratio:.2f})，Y轴区域: [{int(min_y)}, {int(max_y)}]")
-            else:
-                full_ocr_text = " | ".join([res[1][0] for res in result[0]])
-                print(f"  - 样本 {i+1}: 匹配失败。目标: '{target_text}', OCR识别内容: '{full_ocr_text}', 最高相似度: {best_match_ratio:.2f}")
 
         cap.release()
 
         if len(all_found_coords) < 3:
             raise RuntimeError(f"无法通过OCR样本自动确定字幕区域！有效样本数过少({len(all_found_coords)}), 请检查视频内容或调整y_axis_detection配置。")
-
-        print(f"--- 第一轮筛选完成，找到 {len(all_found_coords)} 个有效Y轴坐标。开始统计分析... ---")
 
         min_ys = np.array([c[0] for c in all_found_coords])
         max_ys = np.array([c[1] for c in all_found_coords])
@@ -145,10 +135,7 @@ class FrameAnalyzer:
             if abs(min_y - median_min_y) < 2 * std_min_y and abs(max_y - median_max_y) < 2 * std_max_y:
                 filtered_coords.append((min_y, max_y))
         
-        print(f"--- 第二轮离群值过滤完成，剩余 {len(filtered_coords)} 个高置信度坐标。 ---")
-
         if not filtered_coords:
-            print("警告: 离群值过滤后无可用坐标，将使用第一轮所有结果进行计算。")
             filtered_coords = all_found_coords
 
         avg_min_y = sum(c[0] for c in filtered_coords) / len(filtered_coords)
@@ -159,16 +146,24 @@ class FrameAnalyzer:
         final_max_y = int(avg_max_y + padding)
         
         final_area = (0, final_min_y, video_width, final_max_y)
-        print(f"--- Y轴区域检测完成。最终确定区域: {final_area} ---")
         return final_area
 
-    def _extract_frame_batches(self, video_path: str, time_range: tuple[float, float]) -> Generator[Tuple[torch.Tensor, List[float], int], None, None]:
+    def _extract_frame_batches(self, video_path: str, time_range: tuple[float, float], initial_sub: Dict[str, Any]) -> Generator[Tuple[torch.Tensor, List[float], int], None, None]:
             import cv2
             import torch
+            import numpy as np
             from typing import Generator, Tuple, List
 
             if not hasattr(self, 'subtitle_area') or self.subtitle_area is None:
                 raise ValueError("错误: 在提取帧之前必须先调用 set_subtitle_area() 设置字幕区域。")
+
+            sub_id = initial_sub.get('id')
+            is_debug_sub = (sub_id == 1)
+            debug_dir = None
+            if is_debug_sub:
+                debug_dir = f'workspace/temp/sub_{sub_id}_full_frames'
+                os.makedirs(debug_dir, exist_ok=True)
+                print(f"  [调试] 已为ID {sub_id} 启用精确OCR框图，将保存到: {os.path.abspath(debug_dir)}")
 
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
@@ -186,8 +181,23 @@ class FrameAnalyzer:
             for i in range(start_frame_idx, end_frame_idx + 1):
                 ret, frame = cap.read()
                 if not ret: break
-                
+
                 cropped_frame = frame[y1:y2, x1:x2]
+
+                if is_debug_sub:
+                    frame_with_box = frame.copy()
+                    # 对当前帧的裁剪区域进行OCR，以获得最精确的边界框
+                    ocr_result = self.ocr_engine.ocr(cropped_frame, cls=False)
+                    if ocr_result and ocr_result[0]:
+                        for res in ocr_result[0]:
+                            box = res[0]
+                            # 将相对坐标转换回绝对坐标
+                            abs_box = np.array([[[p[0] + x1, p[1] + y1] for p in box]], dtype=np.int32)
+                            cv2.polylines(frame_with_box, [abs_box], isClosed=True, color=(0, 0, 255), thickness=2)
+                    
+                    timestamp = i / fps
+                    debug_filename = os.path.join(debug_dir, f"frame_{timestamp:.3f}.png")
+                    cv2.imwrite(debug_filename, frame_with_box)
                 
                 frame_rgb = cv2.cvtColor(cropped_frame, cv2.COLOR_BGR2RGB)
                 frames_buffer.append(self.preprocess(frame_rgb))
@@ -199,6 +209,9 @@ class FrameAnalyzer:
             
             if frames_buffer:
                 yield torch.stack(frames_buffer).to(self.device), timestamps_buffer, crop_y_start_for_coords
+            
+            total_frames = end_frame_idx - start_frame_idx + 1
+            print(f"  [调试-帧提取] 完成字幕ID {sub_id} 的帧提取。共处理 {total_frames} 帧，时间戳范围 {time_range[0]:.3f} 到 {time_range[1]:.3f}。")
             cap.release()
 
     def _normalize_text(self, text: str) -> str:
@@ -230,7 +243,7 @@ class FrameAnalyzer:
                 merged_subtitles.append(subtitles[i])
         return merged_subtitles
 
-    def analyze_time_range(self, video_path: str, time_range: tuple[float, float], initial_speaker: str) -> List[PreciseSubtitle]:
+    def analyze_time_range(self, video_path: str, time_range: tuple[float, float], initial_speaker: str, initial_sub: Dict[str, Any]) -> List[PreciseSubtitle]:
         import time
         import torch
         import cv2
@@ -243,7 +256,7 @@ class FrameAnalyzer:
         all_timestamps = []
         crop_y_start = self.subtitle_area[1]
 
-        for batch_tensors, frame_timestamps, _ in self._extract_frame_batches(video_path, time_range):
+        for batch_tensors, frame_timestamps, _ in self._extract_frame_batches(video_path, time_range, initial_sub):
             all_strips_tensors.append(batch_tensors)
             all_timestamps.extend(frame_timestamps)
         
@@ -253,14 +266,54 @@ class FrameAnalyzer:
         full_tensor = torch.cat(all_strips_tensors)
         print(f"  - 第1轮: 提取了 {len(full_tensor)} 帧字幕条。")
 
+        # --- 混合变化检测开始 ---
+
+        # 1. 基于相似度的主要变化检测
         sim_config = self.config.get('similarity', {})
         threshold = sim_config.get('threshold', 0.4)
         change_scores = self.similarity_provider.compare_batch(full_tensor)
         change_flags = [score > threshold for score in change_scores]
-        cut_point_indices = [i for i, flag in enumerate(change_flags) if flag]
-        print(f"  - 第2轮: 发现 {len(cut_point_indices)} 个潜在断句点。")
+        cut_point_indices = {i+1 for i, flag in enumerate(change_flags) if flag} # change_scores[i] 是 i 和 i+1 帧的比较，所以断点是 i+1
+        print(f"  - 第2轮(a): 相似度检测发现 {len(cut_point_indices)} 个潜在断句点。")
 
-        ocr_indices = sorted(list(set([0] + cut_point_indices)))
+        # --- 新增的调试代码 --- #
+        if cut_point_indices:
+            print(f"  [调试-相似度] 相似度断句点位于以下时间戳:")
+            for idx in sorted(list(cut_point_indices)):
+                if idx > 0:
+                    ts = all_timestamps[idx]
+                    prev_ts = all_timestamps[idx-1]
+                    score = change_scores[idx-1] # change_scores的索引比帧索引小1
+                    print(f"    - 索引 {idx} (时间戳: {ts:.3f}秒), 从前一帧 (时间戳: {prev_ts:.3f}秒) 过渡, 变化得分: {score:.4f}")
+        # --- 调试代码结束 --- #
+
+        # 2. 基于标准差的轻量级空白帧检测
+        remover_config = self.config.get('remover_v3', {})
+        blank_threshold = remover_config.get('blank_detection_threshold', 0.01)
+        stds = torch.std(full_tensor, dim=[1, 2, 3])
+        is_blank_list = (stds < blank_threshold).tolist()
+
+        # --- 新增的调试代码 --- #
+        print("  [调试-标准差] 所有帧的像素标准差:")
+        for i, std_val in enumerate(stds):
+            ts = all_timestamps[i]
+            is_blank_by_threshold = is_blank_list[i]
+            print(f"    - 索引 {i}, 时间戳: {ts:.3f}秒, 标准差: {std_val:.4f}, 是否空白(阈值{blank_threshold}): {is_blank_by_threshold}")
+        # --- 调试代码结束 --- #
+
+        # 3. 寻找空白/非空白的转换点，并补充到断句点中
+        blank_transition_points = set()
+        for i in range(1, len(is_blank_list)):
+            if is_blank_list[i] != is_blank_list[i-1]:
+                blank_transition_points.add(i)
+        
+        original_points_count = len(cut_point_indices)
+        cut_point_indices.update(blank_transition_points)
+        print(f"  - 第2轮(b): 空白检测补充了 {len(cut_point_indices) - original_points_count} 个新的断句点。")
+
+        # --- 混合变化检测结束 ---
+
+        ocr_indices = sorted(list(set([0] + list(cut_point_indices))))
         texts_at_indices = {}
         for idx in ocr_indices:
             frame_tensor = full_tensor[idx]
@@ -280,14 +333,14 @@ class FrameAnalyzer:
                 bbox = (int(x_min), int(y_min + crop_y_start), int(x_max), int(y_max + crop_y_start))
 
             texts_at_indices[idx] = (text.strip(), bbox)
+            frame_timestamp = all_timestamps[idx]
+            print(f"  [调试-OCR] 关键帧索引: {idx}, 时间戳: {frame_timestamp:.3f}, OCR文本: '{text.strip() if text.strip() else '[空]'}'', Bbox: {bbox}")
         print(f"  - 第3轮: 在 {len(ocr_indices)} 个关键帧上完成OCR。")
 
         precise_subtitles = []
         if not ocr_indices:
             return []
 
-        # --- 核心逻辑重构 ---
-        # 从第一个OCR点开始
         segment_start_idx = ocr_indices[0]
         current_text, current_bbox = texts_at_indices[segment_start_idx]
 
@@ -295,29 +348,26 @@ class FrameAnalyzer:
             next_idx = ocr_indices[i]
             next_text, next_bbox = texts_at_indices[next_idx]
             
-            # 如果文本内容发生变化，则结束当前片段
-            if next_text != current_text:
-                # 只有当旧文本有效时，才创建片段
+            if self._normalize_text(next_text) != self._normalize_text(current_text):
                 if current_text:
                     start_time = all_timestamps[segment_start_idx]
-                    # 片段的结束帧是下一个片段开始的前一帧
                     end_time = all_timestamps[next_idx - 1]
                     if end_time > start_time:
-                        precise_subtitles.append(PreciseSubtitle(id=0, start_time=start_time, end_time=end_time, text=current_text, speaker=initial_speaker, coordinates=current_bbox))
-                    
-                    # 开启新片段
-                    segment_start_idx = next_idx
-                    current_text = next_text
-                    current_bbox = next_bbox
+                        new_sub = PreciseSubtitle(id=0, start_time=start_time, end_time=end_time, text=current_text, speaker=initial_speaker, coordinates=current_bbox)
+                        print(f"  [调试-分段] 新建字幕分段: 开始={new_sub.start_time:.3f}, 结束={new_sub.end_time:.3f}, 文本='{new_sub.text}'")
+                        precise_subtitles.append(new_sub)
+                
+                segment_start_idx = next_idx
+                current_text = next_text
+                current_bbox = next_bbox
 
-        # 保存最后一个片段
         if current_text:
             start_time = all_timestamps[segment_start_idx]
-            # 最后一个片段的结束时间是整个分析范围的结束时间
             end_time = all_timestamps[-1]
             if end_time > start_time:
-                precise_subtitles.append(PreciseSubtitle(id=0, start_time=start_time, end_time=end_time, text=current_text, speaker=initial_speaker, coordinates=current_bbox))
+                new_sub = PreciseSubtitle(id=0, start_time=start_time, end_time=end_time, text=current_text, speaker=initial_speaker, coordinates=current_bbox)
+                print(f"  [调试-分段] 新建字幕分段 (最终): 开始={new_sub.start_time:.3f}, 结束={new_sub.end_time:.3f}, 文本='{new_sub.text}'")
+                precise_subtitles.append(new_sub)
         
         print(f"  - 第4轮: 生成了 {len(precise_subtitles)} 条字幕。分段耗时: {time.time() - total_start_time:.2f}s")
-        # 移除局部的合并调用，后续将进行全局合并
         return precise_subtitles

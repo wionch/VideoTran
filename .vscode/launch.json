@@ -67,6 +67,21 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Debug Remove Subtitle V3",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/remove_subtitle_v3.py",
+            "args": [
+                "--video_input",
+                "D:\\Python\\Project\\VideoTran\\videos\\223.mp4",
+                "--subtitle_input",
+                "D:\\Python\\Project\\VideoTran\\videos\\223.json",
+                "--only_convert"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }

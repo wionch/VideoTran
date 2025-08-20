@@ -104,8 +104,8 @@ def main():
             time_range = (start_seconds, end_seconds)
             speaker = sub.get('speaker', 'SPEAKER_UNKNOWN')
             
-            print(f"\n--- 正在处理分段 ID {sub.get('id', 'N/A')} ({sub['startTime']} -> {sub['endTime']}) ---")
-            precise_subs = analyzer.analyze_time_range(args.video_input, time_range, speaker)
+            print(f"\n[调试-主流程] 正在处理原始字幕 ID: {sub.get('id', 'N/A')}, 时间: {sub['startTime']} -> {sub['endTime']}, 文本: '{sub.get('text', '')[:50]}...'" ) # Added debug print
+            precise_subs = analyzer.analyze_time_range(args.video_input, time_range, speaker, sub)
             all_precise_subtitles.extend(precise_subs)
         
         print("\n--- 所有片段分析完成。开始全局合并... ---")
